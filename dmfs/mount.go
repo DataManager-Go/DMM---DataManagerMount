@@ -87,8 +87,13 @@ func (mounter *Mounter) Mount() {
 
 // Umount fs
 func (mounter *Mounter) umount() {
-	mounter.server.Unmount()
-	fmt.Println("Umounted")
+	err := mounter.server.Unmount()
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println("Umounted")
+	}
+
 	mounter.doneChan <- true
 }
 

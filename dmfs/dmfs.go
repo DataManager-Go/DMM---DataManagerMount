@@ -18,7 +18,7 @@ type dmanagerFilesystem struct {
 	libdm   *libdatamanager.LibDM
 }
 
-// Ensure that we implement NodeOnAdder
+// implement the interfaces
 var _ = (fs.NodeOnAdder)((*dmanagerFilesystem)(nil))
 var _ = (fs.NodeRenamer)((*dmanagerFilesystem)(nil))
 var _ = (fs.NodeUnlinker)((*dmanagerFilesystem)(nil))
@@ -26,7 +26,7 @@ var _ = (fs.NodeUnlinker)((*dmanagerFilesystem)(nil))
 // OnAdd is called on mounting the file system. Use it to populate
 // the file system tree.
 func (root *dmanagerFilesystem) OnAdd(ctx context.Context) {
-	root.initFiles()
+	root.initFiles(ctx)
 }
 
 // Unlink if virtual file was unlinked
