@@ -32,19 +32,15 @@ func (mopt *MountOptions) Mount() {
 		log.Fatal(err)
 	}
 
-	// Create fs
-	root := &dmanagerFilesystem{}
-	options := &fs.Options{
-		MountOptions: fuse.MountOptions{
-			Debug:      mopt.DebugFS,
-			AllowOther: false,
-			FsName:     "Datamanager mount",
-			Name:       "dmanager",
-		},
+	// Test server availability
+	if !mopt.testServer() {
+		return
 	}
 
+	root := &dmanagerFilesystem{}
+
 	// Mount fs
-	server, err := fs.Mount(mountDir, root, options)
+	server, err := fs.Mount(mountDir, root, mopt.getMountOptions())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -53,17 +49,19 @@ func (mopt *MountOptions) Mount() {
 	exitChan := make(chan bool, 1)
 	doneChan := make(chan bool, 1)
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, os.Kill)
 	go (func() {
+		signal.Notify(sigChan, os.Interrupt, os.Kill)
 		// Await signal
 		sig := <-sigChan
 
 		// Debug & Umount
-		fmt.Println("Received", sig)
-		exitChan <- true
-		server.Unmount()
-		fmt.Println("Umounted")
+		fmt.Println("\rReceived", sig) // Print \r to overwrite the ugly ^C
 
+		exitChan <- true
+
+		server.Unmount()
+
+		fmt.Println("Umounted")
 		doneChan <- true
 	})()
 
@@ -75,6 +73,29 @@ func (mopt *MountOptions) Mount() {
 		<-doneChan
 	default:
 		fmt.Println("umounted externally\nexiting")
+	}
+}
+
+// tests if server can be accessed and user is authorized
+func (mopt *MountOptions) testServer() bool {
+	_, err := mopt.Libdm.GetNamespaces()
+	if err != nil {
+		fmt.Println("Can't mount:", err)
+		return false
+	}
+
+	return true
+}
+
+// Get the mountoptions for the mount operation
+func (mopt *MountOptions) getMountOptions() *fs.Options {
+	return &fs.Options{
+		MountOptions: fuse.MountOptions{
+			Debug:      mopt.DebugFS,
+			AllowOther: false,
+			FsName:     "Datamanager mount",
+			Name:       "dmanager",
+		},
 	}
 }
 
