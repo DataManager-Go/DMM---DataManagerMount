@@ -45,7 +45,7 @@ func (mounter *Mounter) Mount() {
 	mounter.doneChan = make(chan bool, 1)
 
 	// Create the fs
-	root := &dmanagerFilesystem{
+	root := &dmanagerRoot{
 		mounter: mounter,
 		config:  mounter.Config,
 		libdm:   mounter.Libdm,
