@@ -13,18 +13,21 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
-// MountOptions options to mount
-type MountOptions struct {
+// Mounter options to mount
+type Mounter struct {
 	MountPoint string
 	Config     *dmConfig.Config
 	Libdm      *libdatamanager.LibDM
 	Debug      bool
 	DebugFS    bool
+
+	server   *fuse.Server
+	doneChan chan bool
 }
 
 // Mount the fs
-func (mopt *MountOptions) Mount() {
-	mountDir := filepath.Clean(mopt.MountPoint)
+func (mounter *Mounter) Mount() {
+	mountDir := filepath.Clean(mounter.MountPoint)
 	fmt.Printf("Mounting on %s\n", mountDir)
 
 	// Create mount dir if not exists
@@ -33,24 +36,34 @@ func (mopt *MountOptions) Mount() {
 	}
 
 	// Test server availability
-	if !mopt.testServer() {
+	if !mounter.testServer() {
 		return
 	}
 
-	root := &dmanagerFilesystem{}
+	// Init exit channels
+	exitChan := make(chan bool, 1)
+	mounter.doneChan = make(chan bool, 1)
+
+	// Create the fs
+	root := &dmanagerFilesystem{
+		mounter: mounter,
+		config:  mounter.Config,
+		libdm:   mounter.Libdm,
+	}
+
+	var err error
 
 	// Mount fs
-	server, err := fs.Mount(mountDir, root, mopt.getMountOptions())
+	mounter.server, err = fs.Mount(mountDir, root, mounter.getMountOptions())
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Umount fs on interrupt
-	exitChan := make(chan bool, 1)
-	doneChan := make(chan bool, 1)
 	sigChan := make(chan os.Signal, 1)
 	go (func() {
 		signal.Notify(sigChan, os.Interrupt, os.Kill)
+
 		// Await signal
 		sig := <-sigChan
 
@@ -58,27 +71,30 @@ func (mopt *MountOptions) Mount() {
 		fmt.Println("\rReceived", sig) // Print \r to overwrite the ugly ^C
 
 		exitChan <- true
-
-		server.Unmount()
-
-		fmt.Println("Umounted")
-		doneChan <- true
+		mounter.umount()
 	})()
 
 	// Exit if mountpoint was
 	// unmounted or process was interrupted
-	server.Wait()
+	mounter.server.Wait()
 	select {
 	case <-exitChan:
-		<-doneChan
+		<-mounter.doneChan
 	default:
 		fmt.Println("umounted externally\nexiting")
 	}
 }
 
+// Umount fs
+func (mounter *Mounter) umount() {
+	mounter.server.Unmount()
+	fmt.Println("Umounted")
+	mounter.doneChan <- true
+}
+
 // tests if server can be accessed and user is authorized
-func (mopt *MountOptions) testServer() bool {
-	_, err := mopt.Libdm.GetNamespaces()
+func (mounter *Mounter) testServer() bool {
+	_, err := mounter.Libdm.GetNamespaces()
 	if err != nil {
 		fmt.Println("Can't mount:", err)
 		return false
@@ -88,10 +104,10 @@ func (mopt *MountOptions) testServer() bool {
 }
 
 // Get the mountoptions for the mount operation
-func (mopt *MountOptions) getMountOptions() *fs.Options {
+func (mounter *Mounter) getMountOptions() *fs.Options {
 	return &fs.Options{
 		MountOptions: fuse.MountOptions{
-			Debug:      mopt.DebugFS,
+			Debug:      mounter.DebugFS,
 			AllowOther: false,
 			FsName:     "Datamanager mount",
 			Name:       "dmanager",

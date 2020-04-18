@@ -59,7 +59,7 @@ func main() {
 	}
 
 	// Create mount options
-	options := dmfs.MountOptions{
+	options := dmfs.Mounter{
 		Libdm:      libdatamanager.NewLibDM(config.MustGetRequestConfig()),
 		MountPoint: *appMountpoint,
 		Config:     config,
