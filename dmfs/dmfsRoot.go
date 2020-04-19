@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"syscall"
+	"time"
 
 	"github.com/DataManager-Go/libdatamanager"
 	dmConfig "github.com/DataManager-Go/libdatamanager/config"
@@ -76,8 +77,20 @@ func (root *dmanagerRoot) OnAdd(ctx context.Context) {
 // Unlink if virtual file was unlinked
 func (root *dmanagerRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
 	namespace := addNSName(name, root.libdm.Config)
-	// TODO delete namespace
-	fmt.Println("rm", namespace)
+
+	// wait 2 seconds to ensure, user didn't cancel
+	select {
+	case <-ctx.Done():
+		return syscall.ECANCELED
+	case <-time.After(2 * time.Second):
+	}
+
+	// Do delete request
+	if _, err := root.libdm.DeleteNamespace(namespace); err != nil {
+		fmt.Println(err)
+		return syscall.EFAULT
+	}
+
 	return 0
 }
 
