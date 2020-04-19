@@ -11,20 +11,34 @@ const (
 	defaultNsTimmed = "default"
 )
 
-var (
-	cfg = libdatamanager.RequestConfig{Username: "jojii"}
-)
+func TestFullNS(t *testing.T) {
+	// Build pseudo config
+	data := dataStruct{
+		libdm: &libdatamanager.LibDM{
+			Config: &libdatamanager.RequestConfig{
+				Username: "jojii",
+			},
+		},
+	}
 
-func TestAddNSName(t *testing.T) {
-	newNsName := addNsName(defaultNsTimmed, &cfg)
+	newNsName := data.fullNS(defaultNsFull)
 
 	if newNsName != defaultNsFull {
 		t.Errorf("Expected %s but got %s", defaultNsFull, newNsName)
 	}
 }
 
-func TestRemoveNSName(t *testing.T) {
-	newNsName := removeNsName(defaultNsFull)
+func TestTrimmedNS(t *testing.T) {
+	// Build pseudo config
+	data := dataStruct{
+		libdm: &libdatamanager.LibDM{
+			Config: &libdatamanager.RequestConfig{
+				Username: "jojii",
+			},
+		},
+	}
+
+	newNsName := data.trimmedNS(defaultNsFull)
 
 	if newNsName != defaultNsTimmed {
 		t.Errorf("Expected %s but got %s", defaultNsTimmed, newNsName)

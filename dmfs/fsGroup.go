@@ -2,11 +2,20 @@ package dmfs
 
 import (
 	"context"
-	"fmt"
 	"syscall"
 
 	"github.com/DataManager-Go/libdatamanager"
 	"github.com/hanwen/go-fuse/v2/fs"
+)
+
+const (
+	// NoGroupFolder foldername for
+	// files without groups
+	NoGroupFolder = "no_group"
+)
+
+var (
+	_ = (fs.NodeOnAdder)((*groupInode)(nil))
 )
 
 type groupInode struct {
@@ -17,14 +26,12 @@ type groupInode struct {
 	isNoGroupPlaceholder bool
 }
 
-var _ = (fs.NodeOnAdder)((*groupInode)(nil))
-
 // List files
 func (groupInode *groupInode) OnAdd(ctx context.Context) {
-	fmt.Println("add group")
 	groupAdd := []string{groupInode.group}
 
-	if len(groupAdd) == 1 && groupAdd[0] == "no_group" {
+	// Check if group is no_group
+	if len(groupAdd) == 1 && groupAdd[0] == NoGroupFolder {
 		groupInode.isNoGroupPlaceholder = true
 		groupAdd = []string{}
 	}
@@ -35,7 +42,7 @@ func (groupInode *groupInode) OnAdd(ctx context.Context) {
 	}, 0)
 
 	if err != nil {
-		fmt.Println(err)
+		printResponseError(err, "getting files for "+groupInode.group)
 		return
 	}
 

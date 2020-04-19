@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/DataManager-Go/libdatamanager"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/pkg/errors"
@@ -34,6 +35,7 @@ var (
 	_ = (fs.NodeRmdirer)((*rootNode)(nil))
 	_ = (fs.NodeLookuper)((*rootNode)(nil))
 	_ = (fs.NodeGetattrer)((*rootNode)(nil))
+	_ = (fs.NodeMkdirer)((*rootNode)(nil))
 )
 
 var (
@@ -94,7 +96,7 @@ func (root *rootNode) load(nsCB func(name string)) error {
 
 	// Loop Namespaces and add childs in as folders
 	for _, namespace := range data.userAttributes.Namespace {
-		nsName := removeNsName(namespace.Name)
+		nsName := data.trimmedNS(namespace.Name)
 
 		// Find namespace node
 		v, has := root.nsNodes[nsName]
@@ -137,7 +139,12 @@ func (root *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOu
 
 // Delete Namespace if virtual file was unlinked
 func (root *rootNode) Rmdir(ctx context.Context, name string) syscall.Errno {
-	namespace := addNsName(name, data.libdm.Config)
+	// Throw error if not exists
+	if _, exists := root.nsNodes[data.trimmedNS(name)]; !exists {
+		return syscall.ENOENT
+	}
+
+	namespace := data.fullNS(name)
 
 	// wait 2 seconds to ensure, user didn't cancel
 	select {
@@ -146,9 +153,19 @@ func (root *rootNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	case <-time.After(2 * time.Second):
 	}
 
+	defer func() {
+		delete(root.nsNodes, data.trimmedNS(namespace))
+		child := root.GetChild(name)
+		if child != nil {
+			child.RmAllChildren()
+			child.ForgetPersistent()
+			root.RmChild(name)
+		}
+	}()
+
 	// Do delete request
 	if _, err := data.libdm.DeleteNamespace(namespace); err != nil {
-		fmt.Println(err)
+		printResponseError(err, "rm namespace dir")
 		return syscall.EFAULT
 	}
 
@@ -160,23 +177,58 @@ func (root *rootNode) Rename(ctx context.Context, name string, newParent fs.Inod
 	// Don't rename default ns
 	if name == "default" {
 		fmt.Println("Can't rename default namespace!")
-		return syscall.EIO
+		return syscall.EPERM
 	}
 
 	// Get real namespace names
-	oldNSName := addNsName(name, data.libdm.Config)
-	newNSName := addNsName(newName, data.libdm.Config)
+	oldNSName := data.fullNS(name)
+	newNSName := data.fullNS(newName)
 	root.debug("rename namespace", oldNSName, "->", newNSName)
 
 	// Make rename request
 	_, err := data.libdm.UpdateNamespace(oldNSName, newNSName)
 	if err != nil {
-		fmt.Println(err)
+		printResponseError(err, "rename ns dir")
 		return syscall.EIO
 	}
 
 	// Return success
 	return 0
+}
+
+func (root *rootNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	// Check if created namespace already exists
+	_, h := root.nsNodes[name]
+	if h {
+		return nil, syscall.EEXIST
+	}
+
+	nsName := data.fullNS(name)
+
+	// make create request
+	_, err := data.libdm.CreateNamespace(nsName)
+	if err != nil {
+		printResponseError(err, "create ns dir")
+		return nil, syscall.EIO
+	}
+
+	nsNode := newNamespaceNode(libdatamanager.Namespaceinfo{
+		Name:   nsName,
+		Groups: []string{NoGroupFolder},
+	})
+	root.nsNodes[nsName] = nsNode
+	data.userAttributes.Namespace = append(data.userAttributes.Namespace, nsNode.nsInfo)
+
+	go (func() {
+		time.Sleep(250 * time.Millisecond)
+		root.load(nil)
+	})()
+
+	node := root.NewInode(ctx, nsNode, fs.StableAttr{
+		Mode: syscall.S_IFDIR,
+	})
+
+	return node, 0
 }
 
 // Set attributes for files

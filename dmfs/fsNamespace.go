@@ -2,9 +2,7 @@ package dmfs
 
 import (
 	"context"
-	"fmt"
 	"syscall"
-	"time"
 
 	libdm "github.com/DataManager-Go/libdatamanager"
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -31,6 +29,7 @@ var (
 	_ = (fs.NodeLookuper)((*namespaceNode)(nil))
 )
 
+// Create a new ns node from nsInfo
 func newNamespaceNode(nsInfo libdm.Namespaceinfo) *namespaceNode {
 	return &namespaceNode{
 		nsInfo: nsInfo,
@@ -82,7 +81,7 @@ func (nsNode *namespaceNode) Lookup(ctx context.Context, name string, out *fuse.
 	if child == nil {
 		v := &groupInode{
 			group:                name,
-			isNoGroupPlaceholder: name == "no_group",
+			isNoGroupPlaceholder: name == NoGroupFolder,
 			namespace:            nsNode.nsInfo.Name,
 		}
 
@@ -96,17 +95,14 @@ func (nsNode *namespaceNode) Lookup(ctx context.Context, name string, out *fuse.
 
 // Delete group if vfile was removed
 func (nsNode *namespaceNode) Rmdir(ctx context.Context, name string) syscall.Errno {
-	// wait 2 seconds to ensure, user didn't cancel
-	select {
-	case <-ctx.Done():
-		return syscall.ECANCELED
-	case <-time.After(2 * time.Second):
+	if name == NoGroupFolder {
+		return 0
 	}
 
 	// Do http delete request
 	_, err := data.libdm.DeleteAttribute(libdm.GroupAttribute, nsNode.nsInfo.Name, name)
 	if err != nil {
-		fmt.Println(err)
+		printResponseError(err, "rm group dir")
 		return syscall.ENOENT
 	}
 
@@ -115,7 +111,7 @@ func (nsNode *namespaceNode) Rmdir(ctx context.Context, name string) syscall.Err
 
 // On group renamed
 func (nsNode *namespaceNode) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
-	if name == "no_group" {
+	if name == NoGroupFolder {
 		// TODO add groups to files with no group
 		return 0
 	}
@@ -123,6 +119,7 @@ func (nsNode *namespaceNode) Rename(ctx context.Context, name string, newParent 
 	// Rename group request
 	_, err := data.libdm.UpdateAttribute(libdm.GroupAttribute, nsNode.nsInfo.Name, name, newName)
 	if err != nil {
+		printResponseError(err, "Updating group")
 		return syscall.ENOENT
 	}
 

@@ -3,6 +3,7 @@ package dmfs
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/DataManager-Go/libdatamanager"
@@ -40,6 +41,7 @@ func (data *dataStruct) loadUserAttributes() error {
 		var err error
 		data.userAttributes, err = data.libdm.GetUserAttributeData()
 		if err != nil {
+			printResponseError(err, "loading user attributes")
 			return err
 		}
 
@@ -52,4 +54,22 @@ func (data *dataStruct) loadUserAttributes() error {
 func (data *dataStruct) setUserAttr(inAttr *fuse.AttrOut) {
 	inAttr.Gid = data.gid
 	inAttr.Uid = data.uid
+}
+
+func (data *dataStruct) trimmedNS(ns string) string {
+	userPrefix := data.libdm.Config.Username + "_"
+	if !strings.HasPrefix(ns, userPrefix) {
+		return ns
+	}
+
+	return ns[len(userPrefix):]
+}
+
+func (data *dataStruct) fullNS(ns string) string {
+	userPrefix := data.libdm.Config.Username + "_"
+	if strings.HasPrefix(ns, userPrefix) {
+		return ns
+	}
+
+	return userPrefix + ns
 }

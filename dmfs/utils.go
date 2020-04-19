@@ -1,24 +1,45 @@
 package dmfs
 
 import (
-	"strings"
+	"fmt"
 
 	libdm "github.com/DataManager-Go/libdatamanager"
 )
 
-func removeNsName(ns string) string {
-	if !strings.Contains(ns, "_") {
-		return ns
+// Print an response error for normies
+func printResponseError(err error, msg string) {
+	if err == nil {
+		return
 	}
 
-	return ns[strings.Index(ns, "_")+1:]
+	switch err.(type) {
+	case *libdm.ResponseErr:
+		lrerr := err.(*libdm.ResponseErr)
+
+		var cause string
+
+		if lrerr.Response != nil {
+			cause = lrerr.Response.Message
+		} else if lrerr.Err != nil {
+			cause = lrerr.Err.Error()
+		} else {
+			cause = lrerr.Error()
+		}
+
+		printError(msg, cause)
+	default:
+		if err != nil {
+			printError(msg, err.Error())
+		} else {
+			printError(msg, "no error provided")
+		}
+	}
 }
 
-func addNsName(ns string, libdm *libdm.RequestConfig) string {
-	userPrefix := libdm.Username + "_"
-	if strings.HasPrefix(ns, userPrefix) {
-		return ns
-	}
+func printError(message interface{}, err string) {
+	fmt.Println(getError(message, err))
+}
 
-	return userPrefix + ns
+func getError(message interface{}, err string) string {
+	return fmt.Sprintf("Error %s: %s\n", message, err)
 }
