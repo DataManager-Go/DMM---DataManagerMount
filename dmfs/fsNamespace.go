@@ -94,11 +94,7 @@ func (nsNode *namespaceNode) Lookup(ctx context.Context, name string, out *fuse.
 
 	// create child if not found
 	if child == nil {
-		v := &groupInode{
-			group:                name,
-			isNoGroupPlaceholder: name == NoGroupFolder,
-			namespace:            nsNode.nsInfo.Name,
-		}
+		v := newGroupNode(nsNode.nsInfo.Name, name)
 
 		child = nsNode.NewInode(ctx, v, fs.StableAttr{
 			Mode: syscall.S_IFDIR,
@@ -155,7 +151,7 @@ func (nsNode *namespaceNode) Mkdir(ctx context.Context, name string, mode uint32
 	}
 
 	nsNode.nsInfo.Groups = append(nsNode.nsInfo.Groups, name)
-	node := nsNode.NewInode(ctx, &groupInode{
+	node := nsNode.NewInode(ctx, &groupNode{
 		group:     name,
 		namespace: nsNode.nsInfo.Name,
 	}, fs.StableAttr{
