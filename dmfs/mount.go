@@ -57,7 +57,7 @@ func (mounter *Mounter) Mount() {
 	initData()
 
 	// Create the fs
-	root := &rootNode{}
+	root := newRootNode()
 
 	var err error
 

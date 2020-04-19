@@ -7,15 +7,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DataManager-Go/libdatamanager"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
+/*
+* the root fs is supposed to load and interact
+* with the namespaces and to show them as directories
+ */
+
 type rootNode struct {
 	fs.Inode
 
-	nsMap map[string][]string
+	nsNodes map[string]*namespaceNode
 }
 
 // implement the interfaces
@@ -24,44 +28,53 @@ var _ = (fs.NodeRenamer)((*rootNode)(nil))
 var _ = (fs.NodeRmdirer)((*rootNode)(nil))
 var _ = (fs.NodeLookuper)((*rootNode)(nil))
 
-// OnAdd is called on mounting the file system. Use it to populate
-// the file system tree.
-func (root *rootNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	r := make([]fuse.DirEntry, 0)
+// Create new root Node
+func newRootNode() *rootNode {
+	rn := &rootNode{}
+	rn.nsNodes = make(map[string]*namespaceNode)
+	return rn
+}
 
+// On dir access, load namespaces and groups
+func (root *rootNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	fmt.Println("read root")
+	// Use dataStore to retrieve
+	// groups and namespaces
 	err := data.loadUserAttributes()
 	if err != nil {
 		log.Fatal(err)
-		return nil, syscall.EPERM
+		return nil, syscall.ENOENT
 	}
 
-	if root.nsMap == nil {
-		root.nsMap = make(map[string][]string, 0)
-	}
+	r := make([]fuse.DirEntry, len(data.userAttributes.Namespace))
 
 	// Loop Namespaces and add childs in as folders
-	for _, namespace := range data.userAttributes.Namespace {
+	for i, namespace := range data.userAttributes.Namespace {
 		nsName := removeNSName(namespace.Name)
 
-		_, has := root.nsMap[namespace.Name]
+		// Find namespace node
+		v, has := root.nsNodes[nsName]
 		if !has {
-			root.nsMap[namespace.Name] = namespace.Groups
+			// Create new if not exists
+			root.nsNodes[nsName] = newNamespaceNode(namespace)
+		} else {
+			// Update groups if exists
+			v.nsInfo.Groups = namespace.Groups
 		}
 
-		r = append(r, fuse.DirEntry{
+		r[i] = fuse.DirEntry{
 			Name: nsName,
 			Mode: syscall.S_IFDIR,
-		})
+		}
 	}
 
 	return fs.NewListDirStream(r), 0
 }
 
+// Lookup -> something tries to lookup a file (namespace)
 func (root *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	fullNS := addNSName(name, data.mounter.Libdm.Config)
-
 	// Get cached namespaceInfo from map
-	val, has := root.nsMap[fullNS]
+	val, has := root.nsNodes[name]
 	if !has {
 		return nil, syscall.ENOENT
 	}
@@ -71,12 +84,7 @@ func (root *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOu
 
 	// Create new child if not found
 	if child == nil {
-		child = root.NewInode(ctx, &namespaceNode{
-			nsInfo: &libdatamanager.Namespaceinfo{
-				Name:   fullNS,
-				Groups: val,
-			},
-		}, fs.StableAttr{
+		child = root.NewInode(ctx, val, fs.StableAttr{
 			Mode: syscall.S_IFDIR,
 		})
 	}

@@ -1,6 +1,7 @@
 package dmfs
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -33,7 +34,8 @@ func (data *dataStruct) loadUserAttributes() error {
 	// TODO make cachhe time configureable or even create
 	// a genuius way to calculate a reasonable cachetime
 
-	if time.Now().Unix()-10 > data.lastUserAttrLoad {
+	if time.Now().Unix()-5 > data.lastUserAttrLoad {
+		fmt.Println("reload")
 		var err error
 		data.userAttributes, err = data.libdm.GetUserAttributeData()
 		if err != nil {
