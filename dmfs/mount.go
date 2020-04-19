@@ -45,12 +45,16 @@ func (mounter *Mounter) Mount() {
 	exitChan := make(chan bool, 1)
 	mounter.doneChan = make(chan bool, 1)
 
-	// Create the fs
-	root := &dmanagerRoot{
+	data = dataStruct{
 		mounter: mounter,
 		config:  mounter.Config,
 		libdm:   mounter.Libdm,
 	}
+
+	initData()
+
+	// Create the fs
+	root := &dmanagerRoot{}
 
 	var err error
 

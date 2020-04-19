@@ -7,17 +7,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DataManager-Go/libdatamanager"
-	dmConfig "github.com/DataManager-Go/libdatamanager/config"
 	"github.com/hanwen/go-fuse/v2/fs"
 )
 
 type dmanagerRoot struct {
 	fs.Inode
-
-	mounter *Mounter
-	config  *dmConfig.Config
-	libdm   *libdatamanager.LibDM
 }
 
 // implement the interfaces
@@ -30,14 +24,14 @@ var _ = (fs.NodeRmdirer)((*dmanagerRoot)(nil))
 func (root *dmanagerRoot) OnAdd(ctx context.Context) {
 	root.debug("Init files")
 
-	userData, err := root.libdm.GetUserAttributeData()
+	err := data.loadUserAttributes()
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 
 	// Loop Namespaces and add childs in as folders
-	for _, namespace := range userData.Namespace {
+	for _, namespace := range data.userAttributes.Namespace {
 		nsName := removeNSName(namespace.Name)
 
 		// reuse child
@@ -61,7 +55,10 @@ func (root *dmanagerRoot) OnAdd(ctx context.Context) {
 		for _, group := range namespace.Groups {
 			gp := nsp.GetChild(group)
 			if gp == nil {
-				gp = nsp.NewInode(ctx, &fs.Inode{}, fs.StableAttr{
+				gp = nsp.NewInode(ctx, &groupInode{
+					group:     group,
+					namespace: namespace.Name,
+				}, fs.StableAttr{
 					Mode: syscall.S_IFDIR,
 				})
 
@@ -76,7 +73,7 @@ func (root *dmanagerRoot) OnAdd(ctx context.Context) {
 
 // Unlink if virtual file was unlinked
 func (root *dmanagerRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
-	namespace := addNSName(name, root.libdm.Config)
+	namespace := addNSName(name, data.libdm.Config)
 
 	// wait 2 seconds to ensure, user didn't cancel
 	select {
@@ -86,7 +83,7 @@ func (root *dmanagerRoot) Rmdir(ctx context.Context, name string) syscall.Errno 
 	}
 
 	// Do delete request
-	if _, err := root.libdm.DeleteNamespace(namespace); err != nil {
+	if _, err := data.libdm.DeleteNamespace(namespace); err != nil {
 		fmt.Println(err)
 		return syscall.EFAULT
 	}
@@ -103,12 +100,12 @@ func (root *dmanagerRoot) Rename(ctx context.Context, name string, newParent fs.
 	}
 
 	// Get real namespace names
-	oldNSName := addNSName(name, root.libdm.Config)
-	newNSName := addNSName(newName, root.libdm.Config)
+	oldNSName := addNSName(name, data.libdm.Config)
+	newNSName := addNSName(newName, data.libdm.Config)
 	root.debug("rename namespace", oldNSName, "->", newNSName)
 
 	// Make rename request
-	_, err := root.libdm.UpdateNamespace(oldNSName, newNSName)
+	_, err := data.libdm.UpdateNamespace(oldNSName, newNSName)
 	if err != nil {
 		fmt.Println(err)
 		return syscall.ENONET
@@ -119,7 +116,7 @@ func (root *dmanagerRoot) Rename(ctx context.Context, name string, newParent fs.
 }
 
 func (root *dmanagerRoot) debug(arg ...interface{}) {
-	if root.mounter.Debug {
+	if data.mounter.Debug {
 		fmt.Println(arg...)
 	}
 }
