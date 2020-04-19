@@ -32,8 +32,23 @@ var (
 // Create a new ns node from nsInfo
 func newNamespaceNode(nsInfo libdm.Namespaceinfo) *namespaceNode {
 	return &namespaceNode{
-		nsInfo: nsInfo,
+		nsInfo: libdm.Namespaceinfo{
+			Name:   nsInfo.Name,
+			Groups: formatGroups(nsInfo.Groups),
+		},
 	}
+}
+
+func formatGroups(groups []string) []string {
+	if groups == nil || len(groups) == 0 {
+		return []string{NoGroupFolder}
+	}
+
+	return append(groups, NoGroupFolder)
+}
+
+func (nsNode *namespaceNode) updateGroups(groups []string) {
+	nsNode.nsInfo.Groups = formatGroups(groups)
 }
 
 // On Namespace dir accessed
@@ -94,6 +109,7 @@ func (nsNode *namespaceNode) Lookup(ctx context.Context, name string, out *fuse.
 }
 
 // Delete group if vfile was removed
+// Note: deleting groups doesn't mean the files are deleted!
 func (nsNode *namespaceNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	if name == NoGroupFolder {
 		return 0
@@ -105,6 +121,9 @@ func (nsNode *namespaceNode) Rmdir(ctx context.Context, name string) syscall.Err
 		printResponseError(err, "rm group dir")
 		return syscall.ENOENT
 	}
+
+	// Remove group from list
+	nsNode.nsInfo.Groups = removeFromStringSlice(nsNode.nsInfo.Groups, name)
 
 	return 0
 }
@@ -128,14 +147,20 @@ func (nsNode *namespaceNode) Rename(ctx context.Context, name string, newParent 
 
 // On group created
 func (nsNode *namespaceNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	// Create group
+	_, err := data.libdm.CreateAttribute(libdm.GroupAttribute, nsNode.nsInfo.Name, name)
+	if err != nil {
+		printResponseError(err, "creating group")
+		return nil, syscall.EIO
+	}
+
+	nsNode.nsInfo.Groups = append(nsNode.nsInfo.Groups, name)
 	node := nsNode.NewInode(ctx, &groupInode{
 		group:     name,
 		namespace: nsNode.nsInfo.Name,
 	}, fs.StableAttr{
 		Mode: syscall.S_IFDIR,
 	})
-
-	// TODO implement create group
 
 	return node, 0
 }

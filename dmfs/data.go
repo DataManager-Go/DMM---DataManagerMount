@@ -39,7 +39,7 @@ func (data *dataStruct) loadUserAttributes() error {
 	if time.Now().Unix()-5 > data.lastUserAttrLoad {
 		fmt.Println("reload")
 		var err error
-		data.userAttributes, err = data.libdm.GetUserAttributeData()
+		data.userAttributes, err = data.libdm.GetUserAttributeData(1)
 		if err != nil {
 			printResponseError(err, "loading user attributes")
 			return err

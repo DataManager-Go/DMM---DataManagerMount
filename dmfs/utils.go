@@ -43,3 +43,20 @@ func printError(message interface{}, err string) {
 func getError(message interface{}, err string) string {
 	return fmt.Sprintf("Error %s: %s\n", message, err)
 }
+
+func removeFromStringSlice(s []string, sub string) []string {
+	i := -1
+	for j := range s {
+		if s[j] == sub {
+			i = j
+			break
+		}
+	}
+
+	if i == -1 {
+		return s
+	}
+
+	s[len(s)-1], s[i] = s[i], s[len(s)-1]
+	return s[:len(s)-1]
+}

@@ -105,7 +105,7 @@ func (root *rootNode) load(nsCB func(name string)) error {
 			root.nsNodes[nsName] = newNamespaceNode(namespace)
 		} else {
 			// Update groups if exists
-			v.nsInfo.Groups = namespace.Groups
+			v.updateGroups(namespace.Groups)
 		}
 
 		if nsCB != nil {
@@ -140,21 +140,27 @@ func (root *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOu
 // Delete Namespace if virtual file was unlinked
 func (root *rootNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	// Throw error if not exists
-	if _, exists := root.nsNodes[data.trimmedNS(name)]; !exists {
+	nsNode, exists := root.nsNodes[data.trimmedNS(name)]
+	if !exists {
 		return syscall.ENOENT
 	}
 
-	namespace := data.fullNS(name)
+	// skip 2s delay if no groups are available
+	skipWait := make(chan bool, 1)
+	if len(nsNode.nsInfo.Groups) == 0 {
+		skipWait <- true
+	}
 
 	// wait 2 seconds to ensure, user didn't cancel
 	select {
 	case <-ctx.Done():
 		return syscall.ECANCELED
 	case <-time.After(2 * time.Second):
+	case <-skipWait:
 	}
 
 	defer func() {
-		delete(root.nsNodes, data.trimmedNS(namespace))
+		delete(root.nsNodes, data.trimmedNS(name))
 		child := root.GetChild(name)
 		if child != nil {
 			child.RmAllChildren()
@@ -164,7 +170,7 @@ func (root *rootNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	}()
 
 	// Do delete request
-	if _, err := data.libdm.DeleteNamespace(namespace); err != nil {
+	if _, err := data.libdm.DeleteNamespace(data.fullNS(name)); err != nil {
 		printResponseError(err, "rm namespace dir")
 		return syscall.EFAULT
 	}
@@ -196,6 +202,7 @@ func (root *rootNode) Rename(ctx context.Context, name string, newParent fs.Inod
 	return 0
 }
 
+// create namespace if ns folder was created
 func (root *rootNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	// Check if created namespace already exists
 	_, h := root.nsNodes[name]
