@@ -83,7 +83,25 @@ func (root *dmanagerRoot) Rmdir(ctx context.Context, name string) syscall.Errno 
 
 // Rename if virtual file was renamed
 func (root *dmanagerRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
-	fmt.Println("renome")
+	// Don't rename default ns
+	if name == "default" {
+		fmt.Println("Can't rename default namespace!")
+		return syscall.EACCES
+	}
+
+	// Get real namespace names
+	oldNSName := addNSName(name, root.libdm.Config)
+	newNSName := addNSName(newName, root.libdm.Config)
+	root.debug("rename namespace", oldNSName, "->", newNSName)
+
+	// Make rename request
+	_, err := root.libdm.UpdateNamespace(oldNSName, newNSName)
+	if err != nil {
+		fmt.Println(err)
+		return syscall.ENONET
+	}
+
+	// Return success
 	return 0
 }
 

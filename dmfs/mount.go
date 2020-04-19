@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"time"
 
 	"github.com/DataManager-Go/libdatamanager"
 	dmConfig "github.com/DataManager-Go/libdatamanager/config"
@@ -87,11 +88,18 @@ func (mounter *Mounter) Mount() {
 
 // Umount fs
 func (mounter *Mounter) umount() {
-	err := mounter.server.Unmount()
-	if err != nil {
-		fmt.Println(err)
-	} else {
-		fmt.Println("Umounted")
+	// On error retry after 3s
+	for {
+		err := mounter.server.Unmount()
+
+		if err != nil {
+			fmt.Println(err)
+			fmt.Println("retry in 3s")
+			time.Sleep(3 * time.Second)
+		} else {
+			fmt.Println("Umounted")
+			break
+		}
 	}
 
 	mounter.doneChan <- true
