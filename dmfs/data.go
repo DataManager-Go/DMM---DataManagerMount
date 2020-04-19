@@ -2,6 +2,7 @@ package dmfs
 
 import (
 	"os"
+	"time"
 
 	"github.com/DataManager-Go/libdatamanager"
 	libdm "github.com/DataManager-Go/libdatamanager"
@@ -16,8 +17,10 @@ type dataStruct struct {
 	config  *dmConfig.Config
 	libdm   *libdatamanager.LibDM
 
-	userAttributes *libdm.UserAttributeDataResponse
-	gid, uid       uint32
+	userAttributes   *libdm.UserAttributeDataResponse
+	lastUserAttrLoad int64
+
+	gid, uid uint32
 }
 
 func initData() {
@@ -27,10 +30,17 @@ func initData() {
 
 // load user attributes (namespaces, groups)
 func (data *dataStruct) loadUserAttributes() error {
-	var err error
-	data.userAttributes, err = data.libdm.GetUserAttributeData()
-	if err != nil {
-		return err
+	// TODO make cachhe time configureable or even create
+	// a genuius way to calculate a reasonable cachetime
+
+	if time.Now().Unix()-10 > data.lastUserAttrLoad {
+		var err error
+		data.userAttributes, err = data.libdm.GetUserAttributeData()
+		if err != nil {
+			return err
+		}
+
+		data.lastUserAttrLoad = time.Now().Unix()
 	}
 
 	return nil

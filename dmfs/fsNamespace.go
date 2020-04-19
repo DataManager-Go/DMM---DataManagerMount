@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DataManager-Go/libdatamanager"
+	libdm "github.com/DataManager-Go/libdatamanager"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
@@ -14,8 +14,7 @@ import (
 type namespaceNode struct {
 	fs.Inode
 
-	namespace string
-	groups    []string
+	nsInfo *libdm.Namespaceinfo
 }
 
 var _ = (fs.NodeOnAdder)((*namespaceNode)(nil))
@@ -26,17 +25,17 @@ var _ = (fs.NodeRenamer)((*namespaceNode)(nil))
 func (nsNode *namespaceNode) OnAdd(ctx context.Context) {
 	// Use a no_group folder for files
 	// not associated to a groud
-	if len(nsNode.groups) == 0 {
-		nsNode.groups = []string{"no_group"}
+	if len(nsNode.nsInfo.Groups) == 0 {
+		nsNode.nsInfo.Groups = []string{"no_group"}
 	}
 
 	// Add groups to namespace
-	for _, group := range nsNode.groups {
+	for _, group := range nsNode.nsInfo.Groups {
 		gp := nsNode.GetChild(group)
 		if gp == nil {
 			gp = nsNode.NewInode(ctx, &groupInode{
 				group:     group,
-				namespace: nsNode.namespace,
+				namespace: nsNode.nsInfo.Name,
 			}, fs.StableAttr{
 				Mode: syscall.S_IFDIR,
 			})
@@ -56,7 +55,7 @@ func (nsNode *namespaceNode) Rmdir(ctx context.Context, name string) syscall.Err
 	}
 
 	// Do http delete request
-	_, err := data.libdm.DeleteAttribute(libdatamanager.GroupAttribute, nsNode.namespace, name)
+	_, err := data.libdm.DeleteAttribute(libdm.GroupAttribute, nsNode.nsInfo.Name, name)
 	if err != nil {
 		fmt.Println(err)
 		return syscall.ENOENT
@@ -72,7 +71,7 @@ func (nsNode *namespaceNode) Rename(ctx context.Context, name string, newParent 
 		return 0
 	}
 
-	_, err := data.libdm.UpdateAttribute(libdatamanager.GroupAttribute, nsNode.namespace, name, newName)
+	_, err := data.libdm.UpdateAttribute(libdm.GroupAttribute, nsNode.nsInfo.Name, name, newName)
 	if err != nil {
 		return syscall.ENOENT
 	}
@@ -84,7 +83,7 @@ func (nsNode *namespaceNode) Rename(ctx context.Context, name string, newParent 
 func (nsNode *namespaceNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	node := nsNode.NewInode(ctx, &groupInode{
 		group:     name,
-		namespace: nsNode.namespace,
+		namespace: nsNode.nsInfo.Name,
 	}, fs.StableAttr{
 		Mode: syscall.S_IFDIR,
 	})

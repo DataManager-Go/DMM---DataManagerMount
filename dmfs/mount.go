@@ -3,6 +3,7 @@ package dmfs
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -35,6 +36,8 @@ func (mounter *Mounter) Mount() {
 	if err := createMountpoint(mountDir); err != nil {
 		log.Fatal(err)
 	}
+
+	rand.Seed(time.Now().Unix())
 
 	// Test server availability
 	if !mounter.testServer() {
@@ -122,6 +125,8 @@ func (mounter *Mounter) testServer() bool {
 
 // Get the mountoptions for the mount operation
 func (mounter *Mounter) getMountOptions() *fs.Options {
+	sec := time.Second
+
 	return &fs.Options{
 		MountOptions: fuse.MountOptions{
 			Debug:      mounter.DebugFS,
@@ -129,6 +134,8 @@ func (mounter *Mounter) getMountOptions() *fs.Options {
 			FsName:     "Datamanager mount",
 			Name:       "dmanager",
 		},
+		EntryTimeout: &sec,
+		AttrTimeout:  &sec,
 	}
 }
 

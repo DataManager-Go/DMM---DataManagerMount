@@ -7,50 +7,81 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/DataManager-Go/libdatamanager"
 	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
 type rootNode struct {
 	fs.Inode
+
+	nsMap map[string][]string
 }
 
 // implement the interfaces
-var _ = (fs.NodeOnAdder)((*rootNode)(nil))
+var _ = (fs.NodeReaddirer)((*rootNode)(nil))
 var _ = (fs.NodeRenamer)((*rootNode)(nil))
 var _ = (fs.NodeRmdirer)((*rootNode)(nil))
+var _ = (fs.NodeLookuper)((*rootNode)(nil))
 
 // OnAdd is called on mounting the file system. Use it to populate
 // the file system tree.
-func (root *rootNode) OnAdd(ctx context.Context) {
-	root.debug("Init files")
+func (root *rootNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	r := make([]fuse.DirEntry, 0)
 
 	err := data.loadUserAttributes()
 	if err != nil {
 		log.Fatal(err)
-		return
+		return nil, syscall.EPERM
+	}
+
+	if root.nsMap == nil {
+		root.nsMap = make(map[string][]string, 0)
 	}
 
 	// Loop Namespaces and add childs in as folders
 	for _, namespace := range data.userAttributes.Namespace {
 		nsName := removeNSName(namespace.Name)
 
-		// reuse child
-		nsp := root.Inode.GetChild(nsName)
-
-		// Create namespace folder
-		if nsp == nil {
-			nsp = root.Inode.NewInode(ctx, &namespaceNode{
-				namespace: nsName,
-				groups:    namespace.Groups,
-			}, fs.StableAttr{
-				Mode: syscall.S_IFDIR,
-			})
-
-			root.AddChild(nsName, nsp, true)
+		_, has := root.nsMap[namespace.Name]
+		if !has {
+			root.nsMap[namespace.Name] = namespace.Groups
 		}
+
+		r = append(r, fuse.DirEntry{
+			Name: nsName,
+			Mode: syscall.S_IFDIR,
+		})
 	}
 
-	root.debug("Init files success")
+	return fs.NewListDirStream(r), 0
+}
+
+func (root *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	fullNS := addNSName(name, data.mounter.Libdm.Config)
+
+	// Get cached namespaceInfo from map
+	val, has := root.nsMap[fullNS]
+	if !has {
+		return nil, syscall.ENOENT
+	}
+
+	// Try to reuse child
+	child := root.GetChild(name)
+
+	// Create new child if not found
+	if child == nil {
+		child = root.NewInode(ctx, &namespaceNode{
+			nsInfo: &libdatamanager.Namespaceinfo{
+				Name:   fullNS,
+				Groups: val,
+			},
+		}, fs.StableAttr{
+			Mode: syscall.S_IFDIR,
+		})
+	}
+
+	return child, 0
 }
 
 // Delete Namespace if virtual file was unlinked
