@@ -54,7 +54,7 @@ func (mounter *Mounter) Mount() {
 	initData()
 
 	// Create the fs
-	root := &dmanagerRoot{}
+	root := &rootNode{}
 
 	var err error
 

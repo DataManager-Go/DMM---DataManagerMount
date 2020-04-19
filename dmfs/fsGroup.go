@@ -12,8 +12,9 @@ import (
 type groupInode struct {
 	fs.Inode
 
-	namespace string
-	group     string
+	namespace            string
+	group                string
+	isNoGroupPlaceholder bool
 }
 
 var _ = (fs.NodeOnAdder)((*groupInode)(nil))
@@ -22,6 +23,7 @@ func (groupInode *groupInode) OnAdd(ctx context.Context) {
 	groupAdd := []string{groupInode.group}
 
 	if len(groupAdd) == 1 && groupAdd[0] == "no_group" {
+		groupInode.isNoGroupPlaceholder = true
 		groupAdd = []string{}
 	}
 
