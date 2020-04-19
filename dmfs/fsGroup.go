@@ -19,7 +19,9 @@ type groupInode struct {
 
 var _ = (fs.NodeOnAdder)((*groupInode)(nil))
 
+// List files
 func (groupInode *groupInode) OnAdd(ctx context.Context) {
+	fmt.Println("add group")
 	groupAdd := []string{groupInode.group}
 
 	if len(groupAdd) == 1 && groupAdd[0] == "no_group" {

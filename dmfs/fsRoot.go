@@ -15,6 +15,7 @@ import (
 /*
 * the root fs is supposed to load and interact
 * with the namespaces and to show them as directories
+* Hierarchy: fsRoot -> fsNamespace -> fsGroup -> fsFile
  */
 
 type rootNode struct {
@@ -93,7 +94,7 @@ func (root *rootNode) load(nsCB func(name string)) error {
 
 	// Loop Namespaces and add childs in as folders
 	for _, namespace := range data.userAttributes.Namespace {
-		nsName := removeNSName(namespace.Name)
+		nsName := removeNsName(namespace.Name)
 
 		// Find namespace node
 		v, has := root.nsNodes[nsName]
@@ -136,7 +137,7 @@ func (root *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOu
 
 // Delete Namespace if virtual file was unlinked
 func (root *rootNode) Rmdir(ctx context.Context, name string) syscall.Errno {
-	namespace := addNSName(name, data.libdm.Config)
+	namespace := addNsName(name, data.libdm.Config)
 
 	// wait 2 seconds to ensure, user didn't cancel
 	select {
@@ -163,8 +164,8 @@ func (root *rootNode) Rename(ctx context.Context, name string, newParent fs.Inod
 	}
 
 	// Get real namespace names
-	oldNSName := addNSName(name, data.libdm.Config)
-	newNSName := addNSName(newName, data.libdm.Config)
+	oldNSName := addNsName(name, data.libdm.Config)
+	newNSName := addNsName(newName, data.libdm.Config)
 	root.debug("rename namespace", oldNSName, "->", newNSName)
 
 	// Make rename request

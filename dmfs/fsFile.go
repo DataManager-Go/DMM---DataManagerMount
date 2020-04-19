@@ -17,7 +17,7 @@ type fileInode struct {
 
 var _ = (fs.NodeGetattrer)((*fileInode)(nil))
 
-// Set attributes for files
+// Set file attributes
 func (fnode *fileInode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	out.Size = uint64(fnode.file.Size)
 	out.Ctime = uint64(fnode.file.CreationDate.Unix())
