@@ -8,6 +8,7 @@ import (
 	"github.com/DataManager-Go/libdatamanager"
 	libdm "github.com/DataManager-Go/libdatamanager"
 	dmConfig "github.com/DataManager-Go/libdatamanager/config"
+	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
 var data dataStruct
@@ -46,4 +47,9 @@ func (data *dataStruct) loadUserAttributes() error {
 	}
 
 	return nil
+}
+
+func (data *dataStruct) setUserAttr(inAttr *fuse.AttrOut) {
+	inAttr.Gid = data.gid
+	inAttr.Uid = data.uid
 }

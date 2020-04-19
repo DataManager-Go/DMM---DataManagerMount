@@ -22,12 +22,14 @@ type namespaceNode struct {
 	nsInfo libdm.Namespaceinfo
 }
 
-// var _ = (fs.NodeOnAdder)((*namespaceNode)(nil))
-var _ = (fs.NodeRmdirer)((*namespaceNode)(nil))
-var _ = (fs.NodeMkdirer)((*namespaceNode)(nil))
-var _ = (fs.NodeRenamer)((*namespaceNode)(nil))
-var _ = (fs.NodeReaddirer)((*namespaceNode)(nil))
-var _ = (fs.NodeLookuper)((*namespaceNode)(nil))
+// Implement required interfaces
+var (
+	_ = (fs.NodeRmdirer)((*namespaceNode)(nil))
+	_ = (fs.NodeMkdirer)((*namespaceNode)(nil))
+	_ = (fs.NodeRenamer)((*namespaceNode)(nil))
+	_ = (fs.NodeReaddirer)((*namespaceNode)(nil))
+	_ = (fs.NodeLookuper)((*namespaceNode)(nil))
+)
 
 func newNamespaceNode(nsInfo libdm.Namespaceinfo) *namespaceNode {
 	return &namespaceNode{
@@ -37,7 +39,12 @@ func newNamespaceNode(nsInfo libdm.Namespaceinfo) *namespaceNode {
 
 // On Namespace dir accessed
 func (nsNode *namespaceNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	// TODO reload groups in dmfsRoot on reading dir
+	// Reload groups if namespace was accessed
+	if _, parent := nsNode.Parent(); parent != nil {
+		if dmfsroot, ok := (parent.Operations()).(*rootNode); ok {
+			go dmfsroot.load(nil)
+		}
+	}
 
 	r := make([]fuse.DirEntry, len(nsNode.nsInfo.Groups))
 
@@ -113,6 +120,7 @@ func (nsNode *namespaceNode) Rename(ctx context.Context, name string, newParent 
 		return 0
 	}
 
+	// Rename group request
 	_, err := data.libdm.UpdateAttribute(libdm.GroupAttribute, nsNode.nsInfo.Name, name, newName)
 	if err != nil {
 		return syscall.ENOENT

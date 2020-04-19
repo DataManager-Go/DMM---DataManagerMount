@@ -23,8 +23,9 @@ func (fnode *fileInode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.
 	out.Ctime = uint64(fnode.file.CreationDate.Unix())
 	out.Mtime = out.Ctime
 	out.Mode = 0640
-	out.Gid = data.gid
-	out.Uid = data.uid
+
+	// Set owner/group
+	data.setUserAttr(out)
 
 	return 0
 }
