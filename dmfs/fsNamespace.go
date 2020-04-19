@@ -2,10 +2,13 @@ package dmfs
 
 import (
 	"context"
+	"fmt"
 	"syscall"
 	"time"
 
+	"github.com/DataManager-Go/libdatamanager"
 	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
 type namespaceNode struct {
@@ -17,6 +20,8 @@ type namespaceNode struct {
 
 var _ = (fs.NodeOnAdder)((*namespaceNode)(nil))
 var _ = (fs.NodeRmdirer)((*namespaceNode)(nil))
+var _ = (fs.NodeMkdirer)((*namespaceNode)(nil))
+var _ = (fs.NodeRenamer)((*namespaceNode)(nil))
 
 func (nsNode *namespaceNode) OnAdd(ctx context.Context) {
 	// Use a no_group folder for files
@@ -50,7 +55,41 @@ func (nsNode *namespaceNode) Rmdir(ctx context.Context, name string) syscall.Err
 	case <-time.After(2 * time.Second):
 	}
 
-	// TODO do delete request
+	// Do http delete request
+	_, err := data.libdm.DeleteAttribute(libdatamanager.GroupAttribute, nsNode.namespace, name)
+	if err != nil {
+		fmt.Println(err)
+		return syscall.ENOENT
+	}
 
 	return 0
+}
+
+// On group renamed
+func (nsNode *namespaceNode) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
+	if name == "no_group" {
+		// TODO add groups to files with no group
+		return 0
+	}
+
+	_, err := data.libdm.UpdateAttribute(libdatamanager.GroupAttribute, nsNode.namespace, name, newName)
+	if err != nil {
+		return syscall.ENOENT
+	}
+
+	return 0
+}
+
+// On group created
+func (nsNode *namespaceNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	node := nsNode.NewInode(ctx, &groupInode{
+		group:     name,
+		namespace: nsNode.namespace,
+	}, fs.StableAttr{
+		Mode: syscall.S_IFDIR,
+	})
+
+	// TODO implement create group
+
+	return node, 0
 }
