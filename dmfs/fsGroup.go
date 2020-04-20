@@ -20,6 +20,7 @@ const (
 var (
 	_ = (fs.NodeReaddirer)((*groupNode)(nil))
 	_ = (fs.NodeLookuper)((*groupNode)(nil))
+	_ = (fs.NodeGetattrer)((*groupNode)(nil))
 )
 
 type groupNode struct {
@@ -40,7 +41,6 @@ func newGroupNode(namespace, group string) *groupNode {
 		isNoGroupPlaceholder: group == NoGroupFolder,
 	}
 }
-
 func (groupNode *groupNode) getRequestAttributes() libdatamanager.FileAttributes {
 	// Don't send any group to get
 	// all files without groups
@@ -57,7 +57,9 @@ func (groupNode *groupNode) getRequestAttributes() libdatamanager.FileAttributes
 
 // List files in group
 func (groupNode *groupNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	fmt.Println("readdir node")
 	r := make([]fuse.DirEntry, 0)
+
 	files, err := data.loadFiles(groupNode.getRequestAttributes())
 	if err != nil {
 		return nil, syscall.EIO
@@ -68,13 +70,22 @@ func (groupNode *groupNode) Readdir(ctx context.Context) (fs.DirStream, syscall.
 			Mode: syscall.S_IFREG,
 			Name: files[i].Name,
 		})
-
-		fmt.Println(files[i].Name)
 	}
 
 	groupNode.files = files
-
 	return fs.NewListDirStream(r), 0
+}
+
+func (groupNode *groupNode) loadfiles() error {
+	fmt.Println("readdir node")
+
+	files, err := data.loadFiles(groupNode.getRequestAttributes())
+	if err != nil {
+		return err
+	}
+
+	groupNode.files = files
+	return nil
 }
 
 func (groupNode *groupNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
@@ -105,4 +116,11 @@ func (groupNode *groupNode) findFile(name string) *libdatamanager.FileResponseIt
 	}
 
 	return nil
+}
+
+// Set file attributes
+func (groupNode *groupNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	out.Mode = 0700
+	data.setUserAttr(out)
+	return 0
 }
