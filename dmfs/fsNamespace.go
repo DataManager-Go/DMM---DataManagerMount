@@ -101,6 +101,8 @@ func (nsNode *namespaceNode) Lookup(ctx context.Context, name string, out *fuse.
 		})
 	}
 
+	nsNode.setGroupFolderAttributes(out)
+
 	return child, 0
 }
 
@@ -159,4 +161,15 @@ func (nsNode *namespaceNode) Mkdir(ctx context.Context, name string, mode uint32
 	})
 
 	return node, 0
+}
+
+// Set attributes for group folders
+func (nsNode *namespaceNode) setGroupFolderAttributes(out *fuse.EntryOut) {
+	out.Owner = fuse.Owner{
+		Gid: data.gid,
+		Uid: data.uid,
+	}
+	out.Gid = data.gid
+	out.Uid = data.uid
+	out.Mode = 0700
 }

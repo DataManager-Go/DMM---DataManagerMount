@@ -134,6 +134,8 @@ func (root *rootNode) Lookup(ctx context.Context, name string, out *fuse.EntryOu
 		})
 	}
 
+	root.setRootNodeAttributes(out)
+
 	return child, 0
 }
 
@@ -249,4 +251,15 @@ func (root *rootNode) debug(arg ...interface{}) {
 	if data.mounter.Debug {
 		fmt.Println(arg...)
 	}
+}
+
+// Set attributes for namespace folders
+func (root *rootNode) setRootNodeAttributes(out *fuse.EntryOut) {
+	out.Owner = fuse.Owner{
+		Gid: data.gid,
+		Uid: data.uid,
+	}
+	out.Gid = data.gid
+	out.Uid = data.uid
+	out.Mode = 0700
 }

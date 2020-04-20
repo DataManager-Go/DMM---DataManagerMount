@@ -20,7 +20,7 @@ const (
 var (
 	_ = (fs.NodeReaddirer)((*groupNode)(nil))
 	_ = (fs.NodeLookuper)((*groupNode)(nil))
-	_ = (fs.NodeGetattrer)((*groupNode)(nil))
+	_ = (fs.NodeUnlinker)((*groupNode)(nil))
 )
 
 type groupNode struct {
@@ -98,12 +98,12 @@ func (groupNode *groupNode) Lookup(ctx context.Context, name string, out *fuse.E
 
 	child := groupNode.GetChild(name)
 	if child == nil {
-		child = groupNode.NewInode(ctx, &fileInode{
-			file: file,
-		}, fs.StableAttr{
+		child = groupNode.NewInode(ctx, &fs.Inode{}, fs.StableAttr{
 			Mode: syscall.S_IFREG,
 		})
 	}
+
+	groupNode.setFileAttrs(file, out)
 
 	return child, 0
 }
@@ -118,9 +118,32 @@ func (groupNode *groupNode) findFile(name string) *libdatamanager.FileResponseIt
 	return nil
 }
 
-// Set file attributes
-func (groupNode *groupNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	out.Mode = 0700
-	data.setUserAttr(out)
+// Set file attributes for files
+func (groupNode *groupNode) setFileAttrs(file *libdatamanager.FileResponseItem, out *fuse.EntryOut) {
+	out.Size = uint64(file.Size)
+
+	// Times
+	out.Ctime = uint64(file.CreationDate.Unix())
+	out.Mtime = out.Ctime
+	out.Atime = out.Ctime
+
+	out.Mode = 0600
+
+	out.Uid = data.uid
+	out.Gid = data.gid
+	out.Owner = fuse.Owner{
+		Gid: data.gid,
+		Uid: data.uid,
+	}
+}
+
+// Delete file
+func (groupNode *groupNode) Unlink(ctx context.Context, name string) syscall.Errno {
+	file := groupNode.findFile(name)
+	if file == nil {
+		return syscall.ENOENT
+	}
+
+	// TODO delete file remotely
 	return 0
 }
