@@ -122,6 +122,7 @@ func (nsNode *namespaceNode) Rmdir(ctx context.Context, name string) syscall.Err
 
 	// Remove group from list
 	nsNode.nsInfo.Groups = removeFromStringSlice(nsNode.nsInfo.Groups, name)
+	data.lastUserAttrLoad = 0
 
 	return 0
 }
@@ -148,7 +149,7 @@ func (nsNode *namespaceNode) Mkdir(ctx context.Context, name string, mode uint32
 	// Create group
 	_, err := data.libdm.CreateAttribute(libdm.GroupAttribute, nsNode.nsInfo.Name, name)
 	if err != nil {
-		printResponseError(err, "creating group")
+		printResponseError(err, "creating group "+name)
 		return nil, syscall.EIO
 	}
 

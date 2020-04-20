@@ -80,6 +80,18 @@ func (data *dataStruct) loadFiles(attributes libdatamanager.FileAttributes) ([]l
 	return data.filesCache[attributes.Namespace], nil
 }
 
+func (data *dataStruct) removeCachedFile(fileName, namespaceName string) {
+	for i := range data.filesCache[namespaceName] {
+		if data.filesCache[namespaceName][i].Name == fileName {
+			data.filesCache[namespaceName] = removeFileByIndex(data.filesCache[namespaceName], i)
+			return
+		}
+	}
+
+	// invalide caches
+	data.lastFileload[namespaceName] = 0
+}
+
 func (data *dataStruct) getLastFileLoad(namespace string) int64 {
 	v, h := data.lastFileload[namespace]
 

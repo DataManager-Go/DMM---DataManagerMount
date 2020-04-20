@@ -177,6 +177,8 @@ func (root *rootNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 		return syscall.EFAULT
 	}
 
+	data.lastUserAttrLoad = 0
+
 	return 0
 }
 
@@ -199,6 +201,8 @@ func (root *rootNode) Rename(ctx context.Context, name string, newParent fs.Inod
 		printResponseError(err, "rename ns dir")
 		return syscall.EIO
 	}
+
+	data.lastUserAttrLoad = 0
 
 	// Return success
 	return 0

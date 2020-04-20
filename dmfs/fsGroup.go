@@ -2,9 +2,9 @@ package dmfs
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/DataManager-Go/libdatamanager"
 	libdm "github.com/DataManager-Go/libdatamanager"
@@ -15,7 +15,7 @@ import (
 const (
 	// NoGroupFolder foldername for
 	// files without groups
-	NoGroupFolder = "no_group"
+	NoGroupFolder = "all_files"
 )
 
 var (
@@ -31,18 +31,21 @@ type groupNode struct {
 	group                string
 	isNoGroupPlaceholder bool
 
-	files []libdm.FileResponseItem
+	fileMap map[string]*libdm.FileResponseItem
 
 	mx sync.Mutex
 }
 
 // Create a new group node
 func newGroupNode(namespace, group string) *groupNode {
-	return &groupNode{
+	groupNode := &groupNode{
 		namespace:            namespace,
 		group:                group,
 		isNoGroupPlaceholder: group == NoGroupFolder,
 	}
+	groupNode.fileMap = make(map[string]*libdm.FileResponseItem)
+
+	return groupNode
 }
 func (groupNode *groupNode) getRequestAttributes() libdatamanager.FileAttributes {
 	// Don't send any group to get
@@ -60,43 +63,41 @@ func (groupNode *groupNode) getRequestAttributes() libdatamanager.FileAttributes
 
 // List files in group
 func (groupNode *groupNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	fmt.Println("readdir node")
 	r := make([]fuse.DirEntry, 0)
 
-	files, err := data.loadFiles(groupNode.getRequestAttributes())
+	err := groupNode.loadfiles(func(name string) {
+		r = append(r, fuse.DirEntry{
+			Mode: syscall.S_IFREG,
+			Name: name,
+		})
+	})
+
 	if err != nil {
 		return nil, syscall.EIO
 	}
 
-	for i := range files {
-		r = append(r, fuse.DirEntry{
-			Mode: syscall.S_IFREG,
-			Name: files[i].Name,
-		})
-	}
-
-	groupNode.files = files
 	return fs.NewListDirStream(r), 0
 }
 
-func (groupNode *groupNode) loadfiles() error {
-	fmt.Println("readdir node")
-
+func (groupNode *groupNode) loadfiles(nsCB func(name string)) error {
 	files, err := data.loadFiles(groupNode.getRequestAttributes())
 	if err != nil {
 		return err
 	}
 
-	groupNode.files = files
+	for i := range files {
+		groupNode.fileMap[files[i].Name] = &files[i]
+		if nsCB != nil {
+			nsCB(files[i].Name)
+		}
+	}
+
 	return nil
 }
 
 func (groupNode *groupNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	groupNode.mx.Lock()
-	defer groupNode.mx.Unlock()
-
-	file := groupNode.findFile(name)
-	if file == nil {
+	file, has := groupNode.fileMap[name]
+	if !has || file == nil {
 		return nil, syscall.ENOENT
 	}
 
@@ -131,18 +132,16 @@ func (groupNode *groupNode) setFileAttrs(file *libdatamanager.FileResponseItem, 
 		Gid: data.gid,
 		Uid: data.uid,
 	}
+
+	out.SetEntryTimeout(1 * time.Millisecond)
 }
 
 // Delete file
 func (groupNode *groupNode) Unlink(ctx context.Context, name string) syscall.Errno {
-	f := groupNode.findFile(name)
-	if f == nil {
+	file := groupNode.findFile(name)
+	if file == nil {
 		return syscall.ENOENT
 	}
-	file := *f
-
-	// Remove local
-	groupNode.removeFile(file)
 
 	// Make delete http request
 	_, err := data.libdm.DeleteFile("", file.ID, false, groupNode.getRequestAttributes())
@@ -151,33 +150,23 @@ func (groupNode *groupNode) Unlink(ctx context.Context, name string) syscall.Err
 		return syscall.EIO
 	}
 
-	// FIXME delete correctly from slice
+	groupNode.removeFile(name)
+	groupNode.GetChild(name).ForgetPersistent()
 
 	return 0
 }
 
 // Find file by name
 func (groupNode *groupNode) findFile(name string) *libdatamanager.FileResponseItem {
-	for i := range groupNode.files {
-		if groupNode.files[i].Name == name {
-			return &groupNode.files[i]
-		}
+	file, has := groupNode.fileMap[name]
+	if !has {
+		return nil
 	}
 
-	return nil
+	return file
 }
 
-// Remove file from list
-func (groupNode *groupNode) removeFile(file libdatamanager.FileResponseItem) bool {
-	groupNode.mx.Lock()
-	defer groupNode.mx.Unlock()
-
-	for i := range groupNode.files {
-		if groupNode.files[i].ID == file.ID {
-			groupNode.files = removeFileByIndex(groupNode.files, i)
-			return true
-		}
-	}
-
-	return false
+func (groupNode *groupNode) removeFile(name string) {
+	delete(groupNode.fileMap, name)
+	data.removeCachedFile(name, groupNode.namespace)
 }
