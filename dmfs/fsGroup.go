@@ -3,6 +3,7 @@ package dmfs
 import (
 	"context"
 	"fmt"
+	"sync"
 	"syscall"
 
 	"github.com/DataManager-Go/libdatamanager"
@@ -31,6 +32,8 @@ type groupNode struct {
 	isNoGroupPlaceholder bool
 
 	files []libdm.FileResponseItem
+
+	mx sync.Mutex
 }
 
 // Create a new group node
@@ -89,6 +92,9 @@ func (groupNode *groupNode) loadfiles() error {
 }
 
 func (groupNode *groupNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	groupNode.mx.Lock()
+	defer groupNode.mx.Unlock()
+
 	file := groupNode.findFile(name)
 	if file == nil {
 		return nil, syscall.ENOENT
@@ -106,16 +112,6 @@ func (groupNode *groupNode) Lookup(ctx context.Context, name string, out *fuse.E
 	groupNode.setFileAttrs(file, out)
 
 	return child, 0
-}
-
-func (groupNode *groupNode) findFile(name string) *libdatamanager.FileResponseItem {
-	for i := range groupNode.files {
-		if groupNode.files[i].Name == name {
-			return &groupNode.files[i]
-		}
-	}
-
-	return nil
 }
 
 // Set file attributes for files
@@ -139,11 +135,49 @@ func (groupNode *groupNode) setFileAttrs(file *libdatamanager.FileResponseItem, 
 
 // Delete file
 func (groupNode *groupNode) Unlink(ctx context.Context, name string) syscall.Errno {
-	file := groupNode.findFile(name)
-	if file == nil {
+	f := groupNode.findFile(name)
+	if f == nil {
 		return syscall.ENOENT
 	}
+	file := *f
 
-	// TODO delete file remotely
+	// Remove local
+	groupNode.removeFile(file)
+
+	// Make delete http request
+	_, err := data.libdm.DeleteFile("", file.ID, false, groupNode.getRequestAttributes())
+	if err != nil {
+		printResponseError(err, "deleting file")
+		return syscall.EIO
+	}
+
+	// FIXME delete correctly from slice
+
 	return 0
+}
+
+// Find file by name
+func (groupNode *groupNode) findFile(name string) *libdatamanager.FileResponseItem {
+	for i := range groupNode.files {
+		if groupNode.files[i].Name == name {
+			return &groupNode.files[i]
+		}
+	}
+
+	return nil
+}
+
+// Remove file from list
+func (groupNode *groupNode) removeFile(file libdatamanager.FileResponseItem) bool {
+	groupNode.mx.Lock()
+	defer groupNode.mx.Unlock()
+
+	for i := range groupNode.files {
+		if groupNode.files[i].ID == file.ID {
+			groupNode.files = removeFileByIndex(groupNode.files, i)
+			return true
+		}
+	}
+
+	return false
 }

@@ -3,6 +3,7 @@ package dmfs
 import (
 	"fmt"
 
+	"github.com/DataManager-Go/libdatamanager"
 	libdm "github.com/DataManager-Go/libdatamanager"
 )
 
@@ -58,5 +59,10 @@ func removeFromStringSlice(s []string, sub string) []string {
 	}
 
 	s[len(s)-1], s[i] = s[i], s[len(s)-1]
+	return s[:len(s)-1]
+}
+
+func removeFileByIndex(s []libdatamanager.FileResponseItem, index int) []libdatamanager.FileResponseItem {
+	s[len(s)-1], s[index] = s[index], s[len(s)-1]
 	return s[:len(s)-1]
 }

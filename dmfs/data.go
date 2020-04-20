@@ -66,6 +66,7 @@ func (data *dataStruct) loadFiles(attributes libdatamanager.FileAttributes) ([]l
 
 	if time.Now().Unix()-5 > lastLoad {
 		fmt.Println("fresh file load")
+		data.lastFileload[attributes.Namespace] = time.Now().Unix()
 		resp, err := data.libdm.ListFiles("", 0, false, attributes, 0)
 		if err != nil {
 			return nil, err
@@ -81,9 +82,6 @@ func (data *dataStruct) loadFiles(attributes libdatamanager.FileAttributes) ([]l
 
 func (data *dataStruct) getLastFileLoad(namespace string) int64 {
 	v, h := data.lastFileload[namespace]
-	defer func() {
-		data.lastFileload[namespace] = time.Now().Unix()
-	}()
 
 	if !h {
 		return 0
