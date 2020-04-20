@@ -47,6 +47,7 @@ func newGroupNode(namespace, group string) *groupNode {
 
 	return groupNode
 }
+
 func (groupNode *groupNode) getRequestAttributes() libdatamanager.FileAttributes {
 	// Don't send any group to get
 	// all files without groups
