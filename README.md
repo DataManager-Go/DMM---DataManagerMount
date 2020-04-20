@@ -2,7 +2,7 @@
 Mount your datamanager files into your filesystem.
 
 # Prerequisites
-1. A linux kernel with FUSE support
+1. A kernel with FUSE support
 2. A compiled [binary](https://github.com/DataManager-Go/DMM---DataManagerMount/releases).
 3. A vaild config and session. You can create one using the [cli client](https://github.com/DataManager-Go/DataManagerCLI)
 
@@ -22,9 +22,11 @@ The DmanagerFS supports that. This is one of the main differences between Filesy
 #### The mapping:
 ```bash
 MountPoint
-│
+│   # Namespaces
 ├── default # The default namespace. Equal to <username>_default
+|   |   # Groups
 │   ├── all_files # all files in the default namespace
+|   |   |   # Files
 │   │   ├── file_in_group1_and_ns_default
 │   │   ├── some other file
 │   │   ├── settings.json
@@ -44,3 +46,16 @@ MountPoint
     └── all_files
         └── Whatsapp.apk
 ```
+
+# Features
+- [x] Namespaces
+    - Full support
+- [x] Groups
+    - Full support
+- Files
+    - [x] Listing
+    - [x] Delete
+    - [ ] Read
+    - [ ] Write
+    - [ ] Move (rename)
+    - [ ] Rename
