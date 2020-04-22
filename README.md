@@ -57,5 +57,5 @@ MountPoint
     - [x] Delete
     - [ ] Read
     - [ ] Write
-    - [ ] Move (rename)
-    - [ ] Rename
+    - [x] Move (rename)
+    - [x] Rename

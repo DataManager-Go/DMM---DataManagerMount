@@ -2,6 +2,7 @@ package dmfs
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"syscall"
 	"time"
@@ -22,6 +23,7 @@ var (
 	_ = (fs.NodeReaddirer)((*groupNode)(nil))
 	_ = (fs.NodeLookuper)((*groupNode)(nil))
 	_ = (fs.NodeUnlinker)((*groupNode)(nil))
+	_ = (fs.NodeRenamer)((*groupNode)(nil))
 )
 
 type groupNode struct {
@@ -48,25 +50,25 @@ func newGroupNode(namespace, group string) *groupNode {
 	return groupNode
 }
 
-func (groupNode *groupNode) getRequestAttributes() libdatamanager.FileAttributes {
+func (rootGroupNode *groupNode) getRequestAttributes() libdatamanager.FileAttributes {
 	// Don't send any group to get
 	// all files without groups
-	reqGroup := []string{groupNode.group}
-	if groupNode.isNoGroupPlaceholder {
+	reqGroup := []string{rootGroupNode.group}
+	if rootGroupNode.isNoGroupPlaceholder {
 		reqGroup = []string{}
 	}
 
 	return libdatamanager.FileAttributes{
-		Namespace: groupNode.namespace,
+		Namespace: rootGroupNode.namespace,
 		Groups:    reqGroup,
 	}
 }
 
 // List files in group
-func (groupNode *groupNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+func (rootGroupNode *groupNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	r := make([]fuse.DirEntry, 0)
 
-	err := groupNode.loadfiles(func(name string) {
+	err := rootGroupNode.loadfiles(func(name string) {
 		r = append(r, fuse.DirEntry{
 			Mode: syscall.S_IFREG,
 			Name: name,
@@ -80,14 +82,14 @@ func (groupNode *groupNode) Readdir(ctx context.Context) (fs.DirStream, syscall.
 	return fs.NewListDirStream(r), 0
 }
 
-func (groupNode *groupNode) loadfiles(nsCB func(name string)) error {
-	files, err := data.loadFiles(groupNode.getRequestAttributes())
+func (rootGroupNode *groupNode) loadfiles(nsCB func(name string)) error {
+	files, err := data.loadFiles(rootGroupNode.getRequestAttributes())
 	if err != nil {
 		return err
 	}
 
 	for i := range files {
-		groupNode.fileMap[files[i].Name] = &files[i]
+		rootGroupNode.fileMap[files[i].Name] = &files[i]
 		if nsCB != nil {
 			nsCB(files[i].Name)
 		}
@@ -96,28 +98,28 @@ func (groupNode *groupNode) loadfiles(nsCB func(name string)) error {
 	return nil
 }
 
-func (groupNode *groupNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	file, has := groupNode.fileMap[name]
+func (rootGroupNode *groupNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	file, has := rootGroupNode.fileMap[name]
 	if !has || file == nil {
 		return nil, syscall.ENOENT
 	}
 
-	file.Attributes.Namespace = groupNode.namespace
+	file.Attributes.Namespace = rootGroupNode.namespace
 
-	child := groupNode.GetChild(name)
+	child := rootGroupNode.GetChild(name)
 	if child == nil {
-		child = groupNode.NewInode(ctx, &fs.Inode{}, fs.StableAttr{
+		child = rootGroupNode.NewInode(ctx, &fs.Inode{}, fs.StableAttr{
 			Mode: syscall.S_IFREG,
 		})
 	}
 
-	groupNode.setFileAttrs(file, out)
+	rootGroupNode.setFileAttrs(file, out)
 
 	return child, 0
 }
 
 // Set file attributes for files
-func (groupNode *groupNode) setFileAttrs(file *libdatamanager.FileResponseItem, out *fuse.EntryOut) {
+func (rootGroupNode *groupNode) setFileAttrs(file *libdatamanager.FileResponseItem, out *fuse.EntryOut) {
 	out.Size = uint64(file.Size)
 
 	// Times
@@ -138,28 +140,96 @@ func (groupNode *groupNode) setFileAttrs(file *libdatamanager.FileResponseItem, 
 }
 
 // Delete file
-func (groupNode *groupNode) Unlink(ctx context.Context, name string) syscall.Errno {
-	file := groupNode.findFile(name)
+func (rootGroupNode *groupNode) Unlink(ctx context.Context, name string) syscall.Errno {
+	file := rootGroupNode.findFile(name)
 	if file == nil {
 		return syscall.ENOENT
 	}
 
 	// Make delete http request
-	_, err := data.libdm.DeleteFile("", file.ID, false, groupNode.getRequestAttributes())
+	_, err := data.libdm.DeleteFile("", file.ID, false, rootGroupNode.getRequestAttributes())
 	if err != nil {
 		printResponseError(err, "deleting file")
 		return syscall.EIO
 	}
 
-	groupNode.removeFile(name)
-	groupNode.GetChild(name).ForgetPersistent()
+	rootGroupNode.removeFile(name)
+	rootGroupNode.GetChild(name).ForgetPersistent()
+
+	return 0
+}
+
+func (rootGroupNode *groupNode) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
+	if newParent == nil {
+		fmt.Println("Parent is nil")
+		return syscall.EIO
+	}
+
+	// Check if new parent is a group folder
+	gNode, ok := newParent.EmbeddedInode().Operations().(*groupNode)
+	if !ok {
+		fmt.Println("Can't move file outside of a group")
+		return syscall.EPERM
+	}
+
+	file, ok := rootGroupNode.fileMap[name]
+	if !ok {
+		fmt.Println("file", name, "not found")
+		return syscall.ENOENT
+	}
+
+	if newName == name {
+		if gNode.group == rootGroupNode.group && gNode.namespace == rootGroupNode.namespace {
+			fmt.Println("nothing to do")
+			return 0
+		}
+	}
+
+	changes := libdm.FileChanges{}
+	var didChanges bool
+
+	// Rename
+	if newName != name {
+		fmt.Println("rename")
+		changes.NewName = newName
+		didChanges = true
+	}
+
+	// Change namespace
+	if gNode.namespace != rootGroupNode.namespace {
+		fmt.Println("change namespace")
+		changes.NewNamespace = gNode.namespace
+		didChanges = true
+	}
+
+	// Change group
+	if gNode.group != rootGroupNode.group {
+		fmt.Println("change group")
+		if !gNode.isNoGroupPlaceholder {
+			changes.AddGroups = []string{gNode.group}
+			didChanges = true
+		}
+
+		if !rootGroupNode.isNoGroupPlaceholder {
+			changes.RemoveGroups = []string{rootGroupNode.group}
+			didChanges = true
+		}
+	}
+
+	if didChanges {
+		_, err := data.libdm.UpdateFile("", file.ID, rootGroupNode.namespace, false, changes)
+		if err != nil {
+			printResponseError(err, "updating file")
+			return syscall.EIO
+		}
+	}
 
 	return 0
 }
 
 // Find file by name
-func (groupNode *groupNode) findFile(name string) *libdatamanager.FileResponseItem {
-	file, has := groupNode.fileMap[name]
+func (rootGroupNode *groupNode) findFile(name string) *libdatamanager.FileResponseItem {
+	file, has := rootGroupNode.fileMap[name]
 	if !has {
 		return nil
 	}
@@ -167,7 +237,7 @@ func (groupNode *groupNode) findFile(name string) *libdatamanager.FileResponseIt
 	return file
 }
 
-func (groupNode *groupNode) removeFile(name string) {
-	delete(groupNode.fileMap, name)
-	data.removeCachedFile(name, groupNode.namespace)
+func (rootGroupNode *groupNode) removeFile(name string) {
+	delete(rootGroupNode.fileMap, name)
+	data.removeCachedFile(name, rootGroupNode.namespace)
 }
